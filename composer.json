@@ -1,0 +1,18 @@
+{
+    "name": "emergency-communication-system/twilio-integration",
+    "description": "Twilio SDK integration for Emergency Communication System WordPress plugin",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4",
+        "twilio/sdk": "^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ECS\\": "includes/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

@@ -7,18 +7,13 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-$ecs_twilio_storage = new ECS_Twilio_Storage();
-$groups_result = $ecs_twilio_storage->get_contact_groups();
+$ecs_service = new ECS_Service();
+$groups_result = $ecs_service->get_contact_groups();
 $groups = $groups_result['success'] ? $groups_result['groups'] : array();
 ?>
 
 <div class="wrap">
     <h1><?php _e('Contact Groups Management', 'emergency-communication-system'); ?></h1>
-    
-    <!-- Debug: Test if JavaScript is loaded -->
-    <div id="ecs-js-test" style="display: none; background: #f0f0f0; padding: 10px; margin: 10px 0;">
-        <strong>JavaScript Test:</strong> <span id="ecs-js-status">Not loaded</span>
-    </div>
     
     <div class="ecs-contact-groups">
         <div class="ecs-actions-bar">
@@ -80,7 +75,7 @@ $groups = $groups_result['success'] ? $groups_result['groups'] : array();
                     <tbody>
                         <?php foreach ($groups as $group): ?>
                             <?php
-                            $contacts_in_group_result = $ecs_twilio_storage->get_contacts($group['id'], 1000, 0);
+                            $contacts_in_group_result = $ecs_service->get_contacts($group['id'], 1000, 0);
                             $contacts_count = $contacts_in_group_result['success'] ? count($contacts_in_group_result['contacts']) : 0;
                             ?>
                             <tr data-group-id="<?php echo esc_attr($group['id']); ?>">

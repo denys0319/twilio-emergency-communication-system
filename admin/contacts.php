@@ -1,34 +1,44 @@
 <?php
 /**
- * Phone lists management page
+ * Contacts management page
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-$ecs_twilio_storage = new ECS_Twilio_Storage();
+$ecs_service = new ECS_Service();
 
-// Get groups from Twilio
-$groups_result = $ecs_twilio_storage->get_contact_groups();
+// Get groups from WordPress database
+$groups_result = $ecs_service->get_contact_groups();
 $groups = $groups_result['success'] ? $groups_result['groups'] : array();
 
-// Handle pagination
+// Handle pagination and filtering
 $page = isset($_GET['paged']) ? intval($_GET['paged']) : 1;
 $per_page = 20;
 $offset = ($page - 1) * $per_page;
+$filter_group = isset($_GET['group']) ? $_GET['group'] : null;
 
-// Get contacts from Twilio
-$contacts_result = $ecs_twilio_storage->get_contacts(null, $per_page, $offset);
+// Convert filter_group for database query
+$db_filter_group = null;
+if ($filter_group === 'no-group') {
+    $db_filter_group = 'no-group'; // Special value for contacts without groups
+} elseif ($filter_group && is_numeric($filter_group)) {
+    $db_filter_group = intval($filter_group);
+}
+
+// Get contacts with filter
+$contacts_result = $ecs_service->get_contacts($db_filter_group, $per_page, $offset);
 $contacts = $contacts_result['success'] ? $contacts_result['contacts'] : array();
 
-$total_contacts_result = $ecs_twilio_storage->get_contacts(null, 1000, 0);
+// Get total contacts for pagination (with filter)
+$total_contacts_result = $ecs_service->get_contacts($db_filter_group, 1000, 0);
 $total_contacts = $total_contacts_result['success'] ? count($total_contacts_result['contacts']) : 0;
 $total_pages = ceil($total_contacts / $per_page);
 ?>
 
 <div class="wrap">
-    <h1><?php _e('Phone Lists Management', 'emergency-communication-system'); ?></h1>
+    <h1><?php _e('Contacts Management', 'emergency-communication-system'); ?></h1>
     
     <div class="ecs-phone-lists">
         <div class="ecs-actions-bar">
@@ -122,7 +132,7 @@ $total_pages = ceil($total_contacts / $per_page);
                                 <input type="file" id="ecs_contact_file" name="ecs_contact_file" 
                                        accept=".csv,.xlsx,.xls" required />
                                 <p class="description">
-                                    <?php _e('Upload CSV or Excel file. Expected format: phone, name, group (optional)', 'emergency-communication-system'); ?>
+                                    <?php _e('Upload CSV file with "Display name" column and either "Phone number" or "Mobile Phone" column. Phone numbers will be automatically normalized to E.164 format.', 'emergency-communication-system'); ?>
                                 </p>
                             </td>
                         </tr>
@@ -139,6 +149,46 @@ $total_pages = ceil($total_contacts / $per_page);
             </div>
         </div>
         
+        <!-- Filter Panel -->
+        <div class="ecs-filter-panel">
+            <h3><?php _e('Filter Contacts', 'emergency-communication-system'); ?></h3>
+            <form method="get" class="ecs-filter-form">
+                <input type="hidden" name="page" value="ecs-phone-lists" />
+                <div class="ecs-filter-controls">
+                    <label for="ecs-group-filter"><?php _e('Filter by Group:', 'emergency-communication-system'); ?></label>
+                    <select name="group" id="ecs-group-filter" class="ecs-filter-select">
+                        <option value=""><?php _e('All Groups', 'emergency-communication-system'); ?></option>
+                        <option value="no-group" <?php selected($filter_group, 'no-group'); ?>><?php _e('No Group', 'emergency-communication-system'); ?></option>
+                        <?php foreach ($groups as $group): ?>
+                            <option value="<?php echo esc_attr($group['id']); ?>" <?php selected($filter_group, $group['id']); ?>>
+                                <?php echo esc_html($group['name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <input type="submit" class="button button-primary" value="<?php _e('Apply Filter', 'emergency-communication-system'); ?>" />
+                    <a href="<?php echo admin_url('admin.php?page=ecs-phone-lists'); ?>" class="button">
+                        <?php _e('Clear Filter', 'emergency-communication-system'); ?>
+                    </a>
+                </div>
+            </form>
+            <div class="ecs-filter-results">
+                <span><?php echo $total_contacts; ?> <?php _e('contacts found', 'emergency-communication-system'); ?></span>
+                <?php if ($filter_group): ?>
+                    <span class="ecs-active-filter">
+                        <?php 
+                        if ($filter_group === 'no-group') {
+                            $group_name = __('No Group', 'emergency-communication-system');
+                        } else {
+                            $selected_group = array_filter($groups, function($g) use ($filter_group) { return $g['id'] == $filter_group; });
+                            $group_name = !empty($selected_group) ? reset($selected_group)['name'] : 'Unknown Group';
+                        }
+                        ?>
+                        - <?php printf(__('Filtered by: %s', 'emergency-communication-system'), esc_html($group_name)); ?>
+                    </span>
+                <?php endif; ?>
+            </div>
+        </div>
+        
         <!-- Contacts List -->
         <div class="ecs-contacts-list">
             <h2><?php _e('Contacts', 'emergency-communication-system'); ?></h2>
@@ -146,9 +196,43 @@ $total_pages = ceil($total_contacts / $per_page);
             <?php if (empty($contacts)): ?>
                 <p><?php _e('No contacts found. Add contacts or upload from file.', 'emergency-communication-system'); ?></p>
             <?php else: ?>
-                <table class="wp-list-table widefat fixed striped">
+                <!-- Bulk Actions -->
+                <div class="ecs-bulk-actions">
+                    <div class="ecs-bulk-controls">
+                        <select id="ecs-bulk-action" class="ecs-bulk-select">
+                            <option value=""><?php _e('Bulk Actions', 'emergency-communication-system'); ?></option>
+                            <option value="delete"><?php _e('Delete Selected', 'emergency-communication-system'); ?></option>
+                            <option value="move-to-group"><?php _e('Move to Group', 'emergency-communication-system'); ?></option>
+                        </select>
+                        <select id="ecs-bulk-group" class="ecs-bulk-group-select" style="display: none;">
+                            <option value=""><?php _e('Select Group', 'emergency-communication-system'); ?></option>
+                            <?php foreach ($groups as $group): ?>
+                                <option value="<?php echo esc_attr($group['id']); ?>">
+                                    <?php echo esc_html($group['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" id="ecs-apply-bulk-action" class="button">
+                            <?php _e('Apply', 'emergency-communication-system'); ?>
+                        </button>
+                        <button type="button" id="ecs-select-all" class="button">
+                            <?php _e('Select All', 'emergency-communication-system'); ?>
+                        </button>
+                        <button type="button" id="ecs-clear-selection" class="button">
+                            <?php _e('Clear Selection', 'emergency-communication-system'); ?>
+                        </button>
+                    </div>
+                    <div class="ecs-selection-info">
+                        <span id="ecs-selected-count">0 <?php _e('contacts selected', 'emergency-communication-system'); ?></span>
+                    </div>
+                </div>
+                
+                <table class="wp-list-table widefat fixed striped" id="ecs-contacts-table">
                     <thead>
                         <tr>
+                            <th class="ecs-check-column">
+                                <input type="checkbox" id="ecs-select-all-checkbox" />
+                            </th>
                             <th><?php _e('Name', 'emergency-communication-system'); ?></th>
                             <th><?php _e('Phone', 'emergency-communication-system'); ?></th>
                             <th><?php _e('Group', 'emergency-communication-system'); ?></th>
@@ -157,7 +241,11 @@ $total_pages = ceil($total_contacts / $per_page);
                     </thead>
                     <tbody>
                         <?php foreach ($contacts as $contact): ?>
-                            <tr data-contact-id="<?php echo esc_attr($contact['id']); ?>">
+                            <tr data-contact-id="<?php echo esc_attr($contact['id']); ?>" 
+                                data-group-id="<?php echo esc_attr($contact['group_id'] ?: ''); ?>">
+                                <td class="ecs-check-column">
+                                    <input type="checkbox" class="ecs-contact-checkbox" value="<?php echo esc_attr($contact['id']); ?>" />
+                                </td>
                                 <td><?php echo esc_html($contact['name'] ?: '—'); ?></td>
                                 <td><?php echo esc_html($contact['phone']); ?></td>
                                 <td><?php echo esc_html($contact['group_name'] ?: '—'); ?></td>
@@ -179,18 +267,41 @@ $total_pages = ceil($total_contacts / $per_page);
                 <?php if ($total_pages > 1): ?>
                     <div class="ecs-pagination">
                         <?php
-                        echo paginate_links(array(
+                        $pagination_args = array(
                             'base' => add_query_arg('paged', '%#%'),
                             'format' => '',
                             'prev_text' => __('&laquo; Previous'),
                             'next_text' => __('Next &raquo;'),
                             'total' => $total_pages,
                             'current' => $page
-                        ));
+                        );
+                        
+                        // Preserve filter in pagination
+                        if ($filter_group) {
+                            $pagination_args['add_args'] = array('group' => $filter_group);
+                        }
+                        
+                        echo paginate_links($pagination_args);
                         ?>
                     </div>
                 <?php endif; ?>
             <?php endif; ?>
+        </div>
+    </div>
+    
+    <!-- Bulk Action Confirmation Modal -->
+    <div id="ecs-bulk-confirm-modal" class="ecs-bulk-confirm-modal">
+        <div class="ecs-bulk-confirm-content">
+            <div class="ecs-bulk-confirm-header">
+                <h3 id="ecs-confirm-title"><?php _e('Confirm Bulk Action', 'emergency-communication-system'); ?></h3>
+            </div>
+            <div class="ecs-bulk-confirm-body">
+                <p id="ecs-confirm-message"></p>
+            </div>
+            <div class="ecs-bulk-confirm-actions">
+                <button type="button" id="ecs-confirm-cancel" class="button"><?php _e('Cancel', 'emergency-communication-system'); ?></button>
+                <button type="button" id="ecs-confirm-proceed" class="button button-primary"><?php _e('Proceed', 'emergency-communication-system'); ?></button>
+            </div>
         </div>
     </div>
 </div>

@@ -463,3 +463,220 @@
     border: 1px solid #bee5eb;
     color: #0c5460;
 }
+
+/* Filter Panel Styles */
+.ecs-filter-panel {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.ecs-filter-panel h3 {
+    margin: 0 0 15px 0;
+    color: #23282d;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.ecs-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.ecs-filter-form {
+    margin: 0;
+}
+
+.ecs-filter-controls label {
+    font-weight: 600;
+    color: #23282d;
+    margin: 0;
+}
+
+.ecs-filter-select {
+    min-width: 200px;
+    padding: 6px 10px;
+    border: 1px solid #8c8f94;
+    border-radius: 3px;
+    background: #fff;
+    font-size: 14px;
+}
+
+.ecs-filter-select:focus {
+    border-color: #0073aa;
+    box-shadow: 0 0 0 1px #0073aa;
+    outline: none;
+}
+
+.ecs-filter-results {
+    padding-top: 10px;
+    border-top: 1px solid #f0f0f1;
+    color: #646970;
+    font-size: 14px;
+}
+
+.ecs-filter-results #ecs-filter-count {
+    font-weight: 600;
+}
+
+.ecs-active-filter {
+    color: #0073aa;
+    font-weight: 600;
+    margin-left: 10px;
+}
+
+/* Filtered table rows */
+.ecs-contacts-table tbody tr.filtered-out {
+    display: none;
+}
+
+.ecs-contacts-table tbody tr.filtered-in {
+    display: table-row;
+}
+
+/* Pagination Styles */
+.ecs-pagination {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.ecs-pagination .page-numbers {
+    display: inline-block;
+    padding: 8px 12px;
+    margin: 0 2px;
+    border: 1px solid #ccd0d4;
+    background: #fff;
+    color: #0073aa;
+    text-decoration: none;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.ecs-pagination .page-numbers:hover {
+    background: #f1f1f1;
+    border-color: #0073aa;
+}
+
+.ecs-pagination .page-numbers.current {
+    background: #0073aa;
+    color: #fff;
+    border-color: #0073aa;
+}
+
+.ecs-pagination .page-numbers.dots {
+    border: none;
+    background: transparent;
+    color: #666;
+    cursor: default;
+}
+
+.ecs-pagination .page-numbers.dots:hover {
+    background: transparent;
+    border: none;
+}
+
+/* Bulk Actions Styles */
+.ecs-bulk-actions {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.ecs-bulk-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.ecs-bulk-select,
+.ecs-bulk-group-select {
+    min-width: 150px;
+    padding: 6px 10px;
+    border: 1px solid #8c8f94;
+    border-radius: 3px;
+    background: #fff;
+    font-size: 14px;
+}
+
+.ecs-bulk-select:focus,
+.ecs-bulk-group-select:focus {
+    border-color: #0073aa;
+    box-shadow: 0 0 0 1px #0073aa;
+    outline: none;
+}
+
+.ecs-selection-info {
+    padding-top: 10px;
+    border-top: 1px solid #f0f0f1;
+    color: #646970;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.ecs-check-column {
+    width: 40px;
+    text-align: center;
+}
+
+.ecs-check-column input[type="checkbox"] {
+    margin: 0;
+}
+
+.ecs-contact-checkbox {
+    margin: 0;
+}
+
+/* Bulk action confirmation modal */
+.ecs-bulk-confirm-modal {
+    display: none;
+    position: fixed;
+    z-index: 100000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.ecs-bulk-confirm-content {
+    background-color: #fff;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    width: 400px;
+    max-width: 90%;
+}
+
+.ecs-bulk-confirm-header {
+    margin-bottom: 15px;
+}
+
+.ecs-bulk-confirm-header h3 {
+    margin: 0;
+    color: #d63638;
+}
+
+.ecs-bulk-confirm-body {
+    margin-bottom: 20px;
+    color: #646970;
+}
+
+.ecs-bulk-confirm-actions {
+    text-align: right;
+}
+
+.ecs-bulk-confirm-actions .button {
+    margin-left: 10px;
+}

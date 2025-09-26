@@ -1,13 +1,6 @@
 jQuery(document).ready(function($) {
     'use strict';
     
-    console.log('ECS Admin JS loaded!'); // Test if script loads
-    console.log('jQuery version:', $.fn.jquery); // Test if jQuery is available
-    
-    // Show JavaScript test element
-    $('#ecs-js-test').show();
-    $('#ecs-js-status').text('Loaded successfully!');
-    
     // Initialize the admin interface
     initAdminInterface();
     
@@ -83,8 +76,6 @@ jQuery(document).ready(function($) {
     
     // Group management
     function initGroupManagement() {
-        console.log('initGroupManagement called'); // Debug log
-        
         // Add group button
         $('#ecs-add-group-btn').on('click', function() {
             resetGroupForm();
@@ -107,7 +98,6 @@ jQuery(document).ready(function($) {
         
         // Group form submission
         $('#ecs-group-form').on('submit', function(e) {
-            console.log('Form submitted!'); // Debug log
             e.preventDefault();
             submitGroupForm();
         });
@@ -298,19 +288,14 @@ jQuery(document).ready(function($) {
     }
     
     function submitGroupForm() {
-        console.log('submitGroupForm called'); // Debug log
         var formData = $('#ecs-group-form').serialize();
         formData += '&action=ecs_save_group';
-        
-        console.log('Form data:', formData); // Debug log
-        console.log('AJAX URL:', ecs_ajax.ajax_url); // Debug log
         
         $.ajax({
             url: ecs_ajax.ajax_url,
             type: 'POST',
             data: formData,
             success: function(response) {
-                console.log('AJAX Success Response:', response); // Debug log
                 if (response.success) {
                     alert('Group saved successfully!');
                     location.reload();
@@ -319,8 +304,6 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function(xhr, status, error) {
-                console.log('AJAX Error:', xhr, status, error); // Debug log
-                console.log('Response Text:', xhr.responseText); // Debug log
                 alert('AJAX Error: ' + error + '\nStatus: ' + status);
             }
         });
@@ -669,5 +652,180 @@ jQuery(document).ready(function($) {
     function exportMessages() {
         // Implement message export functionality
         alert('Export functionality not yet implemented.');
+    }
+    
+    // Auto-submit filter form when dropdown changes
+    $(document).ready(function() {
+        $('#ecs-group-filter').on('change', function() {
+            $(this).closest('form').submit();
+        });
+        
+        // Initialize bulk actions
+        initBulkActions();
+    });
+    
+    // Bulk Actions Functionality
+    function initBulkActions() {
+        var $bulkAction = $('#ecs-bulk-action');
+        var $bulkGroup = $('#ecs-bulk-group');
+        var $applyButton = $('#ecs-apply-bulk-action');
+        var $selectAllCheckbox = $('#ecs-select-all-checkbox');
+        var $selectAllButton = $('#ecs-select-all');
+        var $clearSelectionButton = $('#ecs-clear-selection');
+        var $selectedCount = $('#ecs-selected-count');
+        var $confirmModal = $('#ecs-bulk-confirm-modal');
+        var $confirmCancel = $('#ecs-confirm-cancel');
+        var $confirmProceed = $('#ecs-confirm-proceed');
+        
+        // Show/hide group selector based on bulk action
+        $bulkAction.on('change', function() {
+            if ($(this).val() === 'move-to-group') {
+                $bulkGroup.show();
+            } else {
+                $bulkGroup.hide();
+            }
+        });
+        
+        // Update selected count
+        function updateSelectedCount() {
+            var count = $('.ecs-contact-checkbox:checked').length;
+            $selectedCount.text(count + ' contacts selected');
+            $applyButton.prop('disabled', count === 0);
+        }
+        
+        // Handle individual checkbox changes
+        $(document).on('change', '.ecs-contact-checkbox', function() {
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+        });
+        
+        // Handle select all checkbox
+        $selectAllCheckbox.on('change', function() {
+            $('.ecs-contact-checkbox').prop('checked', $(this).prop('checked'));
+            updateSelectedCount();
+        });
+        
+        // Update select all checkbox state
+        function updateSelectAllCheckbox() {
+            var totalCheckboxes = $('.ecs-contact-checkbox').length;
+            var checkedCheckboxes = $('.ecs-contact-checkbox:checked').length;
+            
+            if (checkedCheckboxes === 0) {
+                $selectAllCheckbox.prop('indeterminate', false).prop('checked', false);
+            } else if (checkedCheckboxes === totalCheckboxes) {
+                $selectAllCheckbox.prop('indeterminate', false).prop('checked', true);
+            } else {
+                $selectAllCheckbox.prop('indeterminate', true);
+            }
+        }
+        
+        // Select all button
+        $selectAllButton.on('click', function() {
+            $('.ecs-contact-checkbox').prop('checked', true);
+            $selectAllCheckbox.prop('checked', true);
+            updateSelectedCount();
+        });
+        
+        // Clear selection button
+        $clearSelectionButton.on('click', function() {
+            $('.ecs-contact-checkbox').prop('checked', false);
+            $selectAllCheckbox.prop('checked', false);
+            updateSelectedCount();
+        });
+        
+        // Apply bulk action
+        $applyButton.on('click', function() {
+            var selectedContacts = $('.ecs-contact-checkbox:checked').map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (selectedContacts.length === 0) {
+                alert('Please select at least one contact.');
+                return;
+            }
+            
+            var action = $bulkAction.val();
+            if (!action) {
+                alert('Please select a bulk action.');
+                return;
+            }
+            
+            if (action === 'move-to-group') {
+                var groupId = $bulkGroup.val();
+                if (!groupId) {
+                    alert('Please select a group.');
+                    return;
+                }
+                
+                showBulkConfirmModal(
+                    'Move Contacts to Group',
+                    'Are you sure you want to move ' + selectedContacts.length + ' contact(s) to the selected group?',
+                    function() {
+                        performBulkAction('move-to-group', selectedContacts, groupId);
+                    }
+                );
+            } else if (action === 'delete') {
+                showBulkConfirmModal(
+                    'Delete Contacts',
+                    'Are you sure you want to delete ' + selectedContacts.length + ' contact(s)? This action cannot be undone.',
+                    function() {
+                        performBulkAction('delete', selectedContacts);
+                    }
+                );
+            }
+        });
+        
+        // Show confirmation modal
+        function showBulkConfirmModal(title, message, callback) {
+            $('#ecs-confirm-title').text(title);
+            $('#ecs-confirm-message').text(message);
+            $confirmModal.show();
+            
+            $confirmProceed.off('click').on('click', function() {
+                $confirmModal.hide();
+                callback();
+            });
+        }
+        
+        // Hide modal on cancel
+        $confirmCancel.on('click', function() {
+            $confirmModal.hide();
+        });
+        
+        // Hide modal on outside click
+        $confirmModal.on('click', function(e) {
+            if (e.target === this) {
+                $confirmModal.hide();
+            }
+        });
+        
+        // Perform bulk action
+        function performBulkAction(action, contactIds, groupId) {
+            $.ajax({
+                url: ecs_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'ecs_bulk_action_contacts',
+                    bulk_action: action,
+                    contact_ids: contactIds,
+                    group_id: groupId,
+                    nonce: ecs_ajax.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.data.message);
+                        location.reload();
+                    } else {
+                        alert(response.data.message || 'An error occurred.');
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while performing the bulk action.');
+                }
+            });
+        }
+        
+        // Initialize
+        updateSelectedCount();
     }
 });

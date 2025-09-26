@@ -22,8 +22,9 @@ if (file_exists(ECS_PLUGIN_PATH . 'vendor/autoload.php')) {
 }
 
 // Include required files
+require_once ECS_PLUGIN_PATH . 'includes/class-ecs-database.php';
 require_once ECS_PLUGIN_PATH . 'includes/class-ecs-core.php';
-require_once ECS_PLUGIN_PATH . 'includes/class-ecs-twilio-storage.php';
+require_once ECS_PLUGIN_PATH . 'includes/class-ecs-service.php';
 require_once ECS_PLUGIN_PATH . 'includes/class-ecs-admin.php';
 require_once ECS_PLUGIN_PATH . 'includes/class-ecs-ajax.php';
 require_once ECS_PLUGIN_PATH . 'includes/class-ecs-cron.php';
@@ -42,7 +43,10 @@ add_action('plugins_loaded', 'ecs_init');
 // Activation hook
 register_activation_hook(__FILE__, 'ecs_activate');
 function ecs_activate() {
-    // No database tables needed - all data stored in Twilio
+    // Create database tables
+    $ecs_database = new ECS_Database();
+    $ecs_database->create_tables();
+    
     // Set default options
     add_option('ecs_twilio_account_sid', '');
     add_option('ecs_twilio_auth_token', '');

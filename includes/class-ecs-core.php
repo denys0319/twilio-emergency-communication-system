@@ -24,8 +24,8 @@ class ECS_Core {
         $ecs_ajax = new ECS_Ajax();
         $ecs_ajax->init();
         
-        // Initialize Twilio storage integration
-        $ecs_twilio_storage = new ECS_Twilio_Storage();
+        // Initialize database
+        $ecs_database = new ECS_Database();
         
         // Add admin menu
         add_action('admin_menu', array($this, 'add_admin_menu'));
@@ -57,8 +57,8 @@ class ECS_Core {
         
         add_submenu_page(
             'emergency-communication',
-            'Phone Lists',
-            'Phone Lists',
+            'Contacts',
+            'Contacts',
             'manage_options',
             'ecs-phone-lists',
             array($this, 'admin_phone_lists')
@@ -73,14 +73,6 @@ class ECS_Core {
             array($this, 'admin_contact_groups')
         );
         
-        add_submenu_page(
-            'emergency-communication',
-            'Individual Contacts',
-            'Individual Contacts',
-            'manage_options',
-            'ecs-individual-contacts',
-            array($this, 'admin_individual_contacts')
-        );
         
         add_submenu_page(
             'emergency-communication',
@@ -115,16 +107,13 @@ class ECS_Core {
     }
     
     public function admin_phone_lists() {
-        include ECS_PLUGIN_PATH . 'admin/phone-lists.php';
+        include ECS_PLUGIN_PATH . 'admin/contacts.php';
     }
     
     public function admin_contact_groups() {
         include ECS_PLUGIN_PATH . 'admin/contact-groups.php';
     }
     
-    public function admin_individual_contacts() {
-        include ECS_PLUGIN_PATH . 'admin/individual-contacts.php';
-    }
     
     public function admin_compose_alert() {
         include ECS_PLUGIN_PATH . 'admin/compose-alert.php';
@@ -139,16 +128,10 @@ class ECS_Core {
     }
     
     public function enqueue_admin_scripts($hook) {
-        // Debug: Log the hook name
-        error_log('ECS: Admin hook: ' . $hook);
-        
         // Only load on our plugin pages
         if (strpos($hook, 'emergency-communication') === false && strpos($hook, 'ecs-') === false) {
-            error_log('ECS: Script not loaded for hook: ' . $hook);
             return;
         }
-        
-        error_log('ECS: Loading scripts for hook: ' . $hook);
         
         wp_enqueue_script('jquery');
         wp_enqueue_script('jquery-ui-datepicker');

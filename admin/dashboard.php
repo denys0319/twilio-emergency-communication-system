@@ -7,36 +7,24 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-$ecs_twilio_storage = new ECS_Twilio_Storage();
+$ecs_service = new ECS_Service();
 
 // Get statistics from Twilio
-$contacts_result = $ecs_twilio_storage->get_contacts(null, 1000, 0);
+$contacts_result = $ecs_service->get_contacts(null, 1000, 0);
 $total_contacts = $contacts_result['success'] ? $contacts_result['contacts'] : array();
 
-$groups_result = $ecs_twilio_storage->get_contact_groups();
+$groups_result = $ecs_service->get_contact_groups();
 $total_groups = $groups_result['success'] ? $groups_result['groups'] : array();
 
-$messages_result = $ecs_twilio_storage->get_message_history(10, 0);
+$messages_result = $ecs_service->get_message_history(10, 0);
 $recent_messages = $messages_result['success'] ? $messages_result['messages'] : array();
 
-// Get scheduled messages from Twilio (using messaging services with ECS_Scheduled_ prefix)
-$scheduled_messages = array();
-try {
-    $client = $ecs_twilio_storage->get_client();
-    if ($client) {
-        $services = $client->messaging->v1->services->read();
-        foreach ($services as $service) {
-            if (strpos($service->friendlyName, 'ECS_Scheduled_') === 0) {
-                $scheduled_messages[] = $service;
-            }
-        }
-    }
-} catch (Exception $e) {
-    $scheduled_messages = array();
-}
+// Get scheduled messages from database
+$scheduled_result = $ecs_service->get_scheduled_messages();
+$scheduled_messages = $scheduled_result['success'] ? $scheduled_result['messages'] : array();
 
 // Test Twilio connection
-$connection_test = $ecs_twilio_storage->test_connection();
+$connection_test = $ecs_service->test_connection();
 ?>
 
 <div class="wrap">
@@ -163,38 +151,29 @@ $connection_test = $ecs_twilio_storage->test_connection();
                                         <th><?php _e('Recipients', 'emergency-communication-system'); ?></th>
                                         <th><?php _e('Scheduled For', 'emergency-communication-system'); ?></th>
                                         <th><?php _e('Status', 'emergency-communication-system'); ?></th>
+                                        <th><?php _e('Actions', 'emergency-communication-system'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($scheduled_messages as $scheduled): ?>
                                         <?php
-                                        // Extract message details from service metadata
-                                        $webhook_url = $scheduled->inboundRequestUrl ?? '';
-                                        parse_str(parse_url($webhook_url, PHP_URL_QUERY), $params);
-                                        $message = $params['message'] ?? 'No message details';
-                                        $send_time = $params['send_time'] ?? '';
-                                        
-                                        // Get recipient count from phone numbers in the service
-                                        $recipient_count = 0;
-                                        try {
-                                            $client = $ecs_twilio_storage->get_client();
-                                            if ($client) {
-                                                $phone_numbers = $client->messaging->v1->services($scheduled->sid)
-                                                    ->phoneNumbers->read();
-                                                $recipient_count = count($phone_numbers);
-                                            }
-                                        } catch (Exception $e) {
-                                            $recipient_count = 0;
-                                        }
+                                        $recipients = json_decode($scheduled['recipients'], true);
+                                        $recipient_count = is_array($recipients) ? count($recipients) : 0;
                                         ?>
-                                        <tr>
-                                            <td><?php echo esc_html(wp_trim_words($message, 10)); ?></td>
+                                        <tr data-scheduled-id="<?php echo esc_attr($scheduled['id']); ?>">
+                                            <td><?php echo esc_html(wp_trim_words($scheduled['message'], 10)); ?></td>
                                             <td><?php echo $recipient_count; ?> recipients</td>
-                                            <td><?php echo esc_html($send_time ? date('M j, Y g:i A', strtotime($send_time)) : 'Unknown'); ?></td>
+                                            <td><?php echo esc_html(date('M j, Y g:i A', strtotime($scheduled['send_time']))); ?></td>
                                             <td>
                                                 <span class="ecs-status-badge ecs-status-pending">
                                                     <?php _e('Pending', 'emergency-communication-system'); ?>
                                                 </span>
+                                            </td>
+                                            <td>
+                                                <button type="button" class="button button-small ecs-cancel-scheduled" 
+                                                        data-scheduled-id="<?php echo esc_attr($scheduled['id']); ?>">
+                                                    <?php _e('Cancel', 'emergency-communication-system'); ?>
+                                                </button>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>

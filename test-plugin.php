@@ -86,8 +86,8 @@ if ($phone_number) {
 // Test 4: Test Twilio connection if credentials are available
 if ($account_sid && $auth_token) {
     echo '<h2>Twilio Connection Test</h2>';
-    $ecs_twilio_storage = new ECS_Twilio_Storage();
-    $test_result = $ecs_twilio_storage->test_connection();
+    $ecs_service = new ECS_Service();
+    $test_result = $ecs_service->test_connection();
     
     if ($test_result['success']) {
         echo '<p style="color: green;">✓ Twilio connection successful</p>';
@@ -103,20 +103,20 @@ if ($account_sid && $auth_token) {
 
 // Test 5: Test Twilio storage operations
 echo '<h2>Twilio Storage Operations Test</h2>';
-$ecs_twilio_storage = new ECS_Twilio_Storage();
+$ecs_service = new ECS_Service();
 
 // Test creating a contact group
-$group_result = $ecs_twilio_storage->create_contact_group('Test Group', 'Test Description');
+$group_result = $ecs_service->create_contact_group('Test Group', 'Test Description');
 if ($group_result['success']) {
     echo '<p style="color: green;">✓ Contact group creation successful (ID: ' . $group_result['group_id'] . ')</p>';
     
     // Test creating a contact
-    $contact_result = $ecs_twilio_storage->create_contact('+1234567890', 'Test Contact', 'Test Group');
+    $contact_result = $ecs_service->create_contact('+1234567890', 'Test Contact', 'Test Group');
     if ($contact_result['success']) {
         echo '<p style="color: green;">✓ Contact creation successful (ID: ' . $contact_result['contact_id'] . ')</p>';
         
         // Test retrieving contacts
-        $contacts_result = $ecs_twilio_storage->get_contacts();
+        $contacts_result = $ecs_service->get_contacts();
         if ($contacts_result['success']) {
             echo '<p style="color: green;">✓ Contact retrieval successful (' . count($contacts_result['contacts']) . ' contacts found)</p>';
         } else {

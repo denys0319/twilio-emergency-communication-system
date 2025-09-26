@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-$ecs_twilio_storage = new ECS_Twilio_Storage();
+$ecs_service = new ECS_Service();
 
 // Handle pagination
 $page = isset($_GET['paged']) ? intval($_GET['paged']) : 1;
@@ -15,10 +15,10 @@ $per_page = 20;
 $offset = ($page - 1) * $per_page;
 
 $status_filter = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : null;
-$messages_result = $ecs_twilio_storage->get_message_history($per_page, $offset, $status_filter);
+$messages_result = $ecs_service->get_message_history($per_page, $offset, $status_filter);
 $messages = $messages_result['success'] ? $messages_result['messages'] : array();
 
-$total_messages_result = $ecs_twilio_storage->get_message_history(1000, 0, $status_filter);
+$total_messages_result = $ecs_service->get_message_history(1000, 0, $status_filter);
 $total_messages = $total_messages_result['success'] ? count($total_messages_result['messages']) : 0;
 $total_pages = ceil($total_messages / $per_page);
 ?>
@@ -169,7 +169,7 @@ $total_pages = ceil($total_messages / $per_page);
             // Get scheduled messages from Twilio Messaging Services
             $scheduled_messages = array();
             try {
-                $client = $ecs_twilio_storage->get_client();
+                $client = $ecs_service->get_client();
                 if ($client) {
                     $services = $client->messaging->v1->services->read();
                     foreach ($services as $service) {
@@ -209,7 +209,7 @@ $total_pages = ceil($total_messages / $per_page);
                             // Get recipient count from phone numbers in the service
                             $recipient_count = 0;
                             try {
-                                $client = $ecs_twilio_storage->get_client();
+                                $client = $ecs_service->get_client();
                                 if ($client) {
                                     $phone_numbers = $client->messaging->v1->services($scheduled->sid)
                                         ->phoneNumbers->read();

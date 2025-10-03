@@ -33,6 +33,8 @@ class ECS_Cron {
      * Send scheduled message
      */
     public function send_scheduled_message($message_id) {
+        error_log("ECS Cron: send_scheduled_message called with message_id: $message_id");
+        
         $ecs_service = new ECS_Service();
         
         try {
@@ -46,7 +48,7 @@ class ECS_Cron {
             ), ARRAY_A);
             
             if (!$scheduled_message) {
-                error_log('ECS: Scheduled message not found or already processed: ' . $message_id);
+                error_log('ECS Cron: Scheduled message not found or already processed: ' . $message_id);
                 return;
             }
             
@@ -54,30 +56,62 @@ class ECS_Cron {
             $scheduled_time = strtotime($scheduled_message['send_time']);
             $current_time = current_time('timestamp');
             
+            error_log("ECS Cron: Scheduled time: " . date('Y-m-d H:i:s', $scheduled_time) . " (timestamp: $scheduled_time)");
+            error_log("ECS Cron: Current time: " . date('Y-m-d H:i:s', $current_time) . " (timestamp: $current_time)");
+            
             if ($current_time < $scheduled_time) {
-                // Reschedule for later
+                // Too early, reschedule for later
+                error_log("ECS Cron: Too early to send. Rescheduling for later.");
                 wp_schedule_single_event($scheduled_time, 'ecs_send_scheduled_message', array($message_id));
                 return;
             }
+            
+            error_log("ECS Cron: Sending message now...");
             
             // Decode recipients
             $recipients = json_decode($scheduled_message['recipients'], true);
             
             if (empty($recipients)) {
-                error_log('ECS: No recipients found for scheduled message: ' . $message_id);
+                error_log('ECS Cron: No recipients found for scheduled message: ' . $message_id);
                 return;
             }
+            
+            error_log("ECS Cron: Found " . count($recipients) . " recipients");
             
             // Send the message
             $results = $ecs_service->send_bulk_message($recipients, $scheduled_message['message'], $scheduled_message['from_number']);
             
-            // Update status to sent
-            $wpdb->update($table_scheduled, array('status' => 'sent'), array('id' => $message_id));
+            // Update status to sent with current timestamp
+            $update_result = $wpdb->update(
+                $table_scheduled,
+                array(
+                    'status' => 'sent',
+                    'sent_at' => current_time('mysql')
+                ),
+                array('id' => $message_id),
+                array('%s', '%s'),
+                array('%d')
+            );
             
-            error_log('ECS: Scheduled message sent successfully: ' . $message_id);
+            if ($update_result === false) {
+                error_log('ECS Cron: Failed to update status for message: ' . $message_id . ' Error: ' . $wpdb->last_error);
+            } else {
+                error_log('ECS Cron: Scheduled message sent successfully: ' . $message_id . ' (status updated)');
+            }
             
         } catch (Exception $e) {
-            error_log('ECS: Failed to send scheduled message: ' . $e->getMessage());
+            error_log('ECS Cron: Failed to send scheduled message: ' . $e->getMessage());
+            
+            // Update status to failed
+            $wpdb->update(
+                $table_scheduled,
+                array(
+                    'status' => 'failed'
+                ),
+                array('id' => $message_id),
+                array('%s'),
+                array('%d')
+            );
         }
     }
     
@@ -105,10 +139,10 @@ class ECS_Cron {
         global $wpdb;
         
         try {
-            // Clean up old sent scheduled messages (older than 30 days)
+            // Clean up old scheduled messages (sent, cancelled, failed - older than 30 days)
             $table_scheduled = $wpdb->prefix . 'ecs_scheduled_messages';
             $wpdb->query($wpdb->prepare(
-                "DELETE FROM $table_scheduled WHERE status = 'sent' AND created_at < %s",
+                "DELETE FROM $table_scheduled WHERE status IN ('sent', 'cancelled', 'failed') AND created_at < %s",
                 date('Y-m-d H:i:s', strtotime('-30 days'))
             ));
             

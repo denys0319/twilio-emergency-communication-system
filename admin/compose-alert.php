@@ -17,7 +17,7 @@ $phone_number = get_option('ecs_twilio_phone_number', '');
     <h1><?php _e('Compose Alert Message', 'emergency-communication-system'); ?></h1>
     
     <div class="ecs-compose-alert">
-        <form id="ecs-compose-form">
+        <form id="ecs-compose-form" onsubmit="return false;">
             <?php wp_nonce_field('ecs_nonce', 'ecs_nonce'); ?>
             
             <div class="ecs-compose-section">
@@ -145,12 +145,106 @@ $phone_number = get_option('ecs_twilio_phone_number', '');
                             <label for="ecs-schedule-time"><?php _e('Schedule Time', 'emergency-communication-system'); ?></label>
                         </th>
                         <td>
+                            <?php
+                            // Get WordPress timezone
+                            $wp_timezone = wp_timezone_string();
+                            
+                            // Convert timezone to user-friendly name
+                            $timezone_display = $wp_timezone;
+                            if (preg_match('/^[+-]\d{2}:\d{2}$/', $wp_timezone)) {
+                                // If it's a UTC offset like +00:00, show it as "UTC" or "UTC+X"
+                                if ($wp_timezone === '+00:00' || $wp_timezone === '0' || $wp_timezone === '0.0') {
+                                    $timezone_display = 'UTC';
+                                } else {
+                                    $timezone_display = 'UTC' . $wp_timezone;
+                                }
+                            }
+                            // Get current time in WordPress timezone
+                            $current_time = current_time('Y-m-d\TH:i');
+                            // Get WordPress current timestamp for JavaScript validation
+                            $current_timestamp = current_time('timestamp') * 1000; // Convert to milliseconds for JavaScript
+                            ?>
                             <input type="datetime-local" id="ecs-schedule-time" name="schedule_time" 
                                    class="regular-text" 
+                                   value="<?php echo esc_attr($current_time); ?>"
+                                   data-wp-timestamp="<?php echo esc_attr($current_timestamp); ?>"
+                                   data-wp-timezone="<?php echo esc_attr($wp_timezone); ?>"
                                    placeholder="<?php _e('Select date and time', 'emergency-communication-system'); ?>" />
                             <p class="description">
-                                <?php _e('Select when to send this message', 'emergency-communication-system'); ?>
+                                <?php 
+                                printf(
+                                    __('Select when to send this message (Timezone: %s)', 'emergency-communication-system'),
+                                    '<strong>' . esc_html($timezone_display) . '</strong>'
+                                );
+                                ?>
+                                <br>
+                                <span id="ecs-current-time-display">
+                                    <?php 
+                                    printf(
+                                        __('Current time: %s', 'emergency-communication-system'),
+                                        '<strong>' . current_time('F j, Y g:i A') . '</strong>'
+                                    );
+                                    ?>
+                                </span>
                             </p>
+                            <script>
+                            // Store WordPress timezone offset globally
+                            // Use gmdate() for UTC time, then adjust based on WordPress timezone setting
+                            <?php
+                            // Get timezone offset in seconds
+                            $gmt_offset = get_option('gmt_offset', 0);
+                            $wp_timestamp_utc = time(); // UTC timestamp
+                            $wp_timestamp_adjusted = $wp_timestamp_utc + ($gmt_offset * 3600); // Add offset
+                            ?>
+                            window.ecsWpTimestamp = <?php echo $wp_timestamp_adjusted * 1000; ?>; // WordPress time in milliseconds
+                            window.ecsBrowserTimestamp = new Date().getTime(); // Browser time when page loaded
+                            window.ecsTimeOffset = window.ecsWpTimestamp - window.ecsBrowserTimestamp;
+                            
+                            console.log('=== TIMEZONE DEBUG ===');
+                            console.log('WordPress timezone setting:', '<?php echo esc_js($wp_timezone); ?>');
+                            console.log('GMT offset:', <?php echo $gmt_offset; ?>, 'hours');
+                            console.log('Server UTC time:', '<?php echo gmdate('Y-m-d H:i:s'); ?>');
+                            console.log('WordPress time (adjusted):', '<?php echo date('Y-m-d H:i:s', $wp_timestamp_adjusted); ?>');
+                            console.log('WordPress timestamp:', window.ecsWpTimestamp);
+                            console.log('WordPress Date:', new Date(window.ecsWpTimestamp).toUTCString());
+                            console.log('Browser timestamp:', window.ecsBrowserTimestamp);
+                            console.log('Browser Date:', new Date(window.ecsBrowserTimestamp).toString());
+                            console.log('Time offset (ms):', window.ecsTimeOffset, 'Hours:', (window.ecsTimeOffset / 3600000).toFixed(2));
+                            console.log('====================');
+                            
+                            // Update current time display every second using WordPress timezone
+                            jQuery(document).ready(function($) {
+                                function updateTimeDisplay() {
+                                    // Calculate current WordPress timestamp
+                                    var wpNow = new Date().getTime() + window.ecsTimeOffset;
+                                    var now = new Date(wpNow);
+                                    
+                                    // Use UTC methods since we want to display in WordPress timezone
+                                    var months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                                 'July', 'August', 'September', 'October', 'November', 'December'];
+                                    var month = months[now.getUTCMonth()];
+                                    var day = now.getUTCDate();
+                                    var year = now.getUTCFullYear();
+                                    var hours = now.getUTCHours();
+                                    var minutes = now.getUTCMinutes();
+                                    var seconds = now.getUTCSeconds();
+                                    var ampm = hours >= 12 ? 'PM' : 'AM';
+                                    hours = hours % 12;
+                                    hours = hours ? hours : 12; // 0 should be 12
+                                    minutes = minutes < 10 ? '0' + minutes : minutes;
+                                    seconds = seconds < 10 ? '0' + seconds : seconds;
+                                    
+                                    var timeString = month + ' ' + day + ', ' + year + ' ' + hours + ':' + minutes + ':' + seconds + ' ' + ampm;
+                                    $('#ecs-current-time-display').html('<?php _e('Current time: ', 'emergency-communication-system'); ?><strong>' + timeString + '</strong>');
+                                }
+                                
+                                // Update immediately
+                                updateTimeDisplay();
+                                
+                                // Update every second
+                                setInterval(updateTimeDisplay, 1000);
+                            });
+                            </script>
                         </td>
                     </tr>
                 </table>
@@ -160,11 +254,8 @@ $phone_number = get_option('ecs_twilio_phone_number', '');
                 <button type="button" id="ecs-preview-message" class="button">
                     <?php _e('Preview Message', 'emergency-communication-system'); ?>
                 </button>
-                <button type="submit" id="ecs-send-message" class="button button-primary">
+                <button type="button" id="ecs-send-message" class="button button-primary">
                     <?php _e('Send Message', 'emergency-communication-system'); ?>
-                </button>
-                <button type="button" id="ecs-save-draft" class="button">
-                    <?php _e('Save as Draft', 'emergency-communication-system'); ?>
                 </button>
             </div>
         </form>
@@ -176,15 +267,17 @@ $phone_number = get_option('ecs_twilio_phone_number', '');
                     <h2><?php _e('Message Preview', 'emergency-communication-system'); ?></h2>
                     <span class="ecs-modal-close">&times;</span>
                 </div>
-                <div class="ecs-preview-content">
-                    <h3><?php _e('Message Text', 'emergency-communication-system'); ?></h3>
-                    <div id="ecs-preview-text" class="ecs-preview-message"></div>
-                    
-                    <h3><?php _e('Recipients', 'emergency-communication-system'); ?></h3>
-                    <div id="ecs-preview-recipients" class="ecs-preview-recipients"></div>
-                    
-                    <h3><?php _e('Send Details', 'emergency-communication-system'); ?></h3>
-                    <div id="ecs-preview-details" class="ecs-preview-details"></div>
+                <div class="ecs-modal-body">
+                    <div class="ecs-preview-content">
+                        <h3><?php _e('Message Text', 'emergency-communication-system'); ?></h3>
+                        <div id="ecs-preview-text" class="ecs-preview-message"></div>
+                        
+                        <h3><?php _e('Recipients', 'emergency-communication-system'); ?></h3>
+                        <div id="ecs-preview-recipients" class="ecs-preview-recipients"></div>
+                        
+                        <h3><?php _e('Send Details', 'emergency-communication-system'); ?></h3>
+                        <div id="ecs-preview-details" class="ecs-preview-details"></div>
+                    </div>
                 </div>
                 <div class="ecs-modal-footer">
                     <button type="button" class="button ecs-modal-cancel">

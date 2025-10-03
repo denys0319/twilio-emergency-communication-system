@@ -146,6 +146,7 @@ class ECS_Core {
             'nonce' => wp_create_nonce('ecs_nonce'),
             'strings' => array(
                 'confirm_delete' => __('Are you sure you want to delete this item?', 'emergency-communication-system'),
+                'confirm_cancel' => __('Are you sure you want to cancel this scheduled message? It will not be sent.', 'emergency-communication-system'),
                 'loading' => __('Loading...', 'emergency-communication-system'),
                 'error' => __('An error occurred. Please try again.', 'emergency-communication-system'),
             )

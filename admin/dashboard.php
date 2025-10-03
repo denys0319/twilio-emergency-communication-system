@@ -9,18 +9,31 @@ if (!defined('ABSPATH')) {
 
 $ecs_service = new ECS_Service();
 
-// Get statistics from Twilio
+// Auto-update recent message statuses from Twilio (for messages less than 24 hours old)
+$recent_messages_for_update = $ecs_service->get_message_history(50, 0, null);
+if ($recent_messages_for_update['success']) {
+    foreach ($recent_messages_for_update['messages'] as $message) {
+        // Only update if message is recent and has a Twilio SID
+        if (!empty($message['twilio_sid']) && 
+            strtotime($message['created_at']) > strtotime('-24 hours')) {
+            // Update status in background (non-blocking)
+            $ecs_service->get_message_status($message['twilio_sid']);
+        }
+    }
+}
+
+// Get statistics from WordPress database
 $contacts_result = $ecs_service->get_contacts(null, 1000, 0);
 $total_contacts = $contacts_result['success'] ? $contacts_result['contacts'] : array();
 
 $groups_result = $ecs_service->get_contact_groups();
 $total_groups = $groups_result['success'] ? $groups_result['groups'] : array();
 
-$messages_result = $ecs_service->get_message_history(10, 0);
+$messages_result = $ecs_service->get_message_history(5, 0);
 $recent_messages = $messages_result['success'] ? $messages_result['messages'] : array();
 
-// Get scheduled messages from database
-$scheduled_result = $ecs_service->get_scheduled_messages();
+// Get scheduled messages from database (limit to 5)
+$scheduled_result = $ecs_service->get_scheduled_messages(5, 0);
 $scheduled_messages = $scheduled_result['success'] ? $scheduled_result['messages'] : array();
 
 // Test Twilio connection
@@ -56,7 +69,16 @@ $connection_test = $ecs_service->test_connection();
             
             <div class="ecs-stat-card">
                 <h3><?php _e('Scheduled Messages', 'emergency-communication-system'); ?></h3>
-                <div class="ecs-stat-number"><?php echo count($scheduled_messages); ?></div>
+                <div class="ecs-stat-number">
+                    <?php 
+                    // Count only pending scheduled messages for the stat
+                    $pending_count = count(array_filter($scheduled_messages, function($msg) {
+                        return $msg['status'] === 'pending';
+                    }));
+                    echo $pending_count;
+                    ?>
+                </div>
+                <small><?php _e('Pending', 'emergency-communication-system'); ?></small>
             </div>
         </div>
         
@@ -129,11 +151,16 @@ $connection_test = $ecs_service->test_connection();
                                                     <?php echo esc_html(ucfirst($message['status'])); ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo esc_html(date('M j, Y g:i A', strtotime($message['created_at']))); ?></td>
+                                            <td><?php echo esc_html(date_i18n('M j, Y g:i A', strtotime($message['created_at']))); ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                            <p style="text-align: right; margin-top: 10px;">
+                                <a href="<?php echo admin_url('admin.php?page=ecs-message-history'); ?>" class="button">
+                                    <?php _e('View All Messages →', 'emergency-communication-system'); ?>
+                                </a>
+                            </p>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -163,22 +190,31 @@ $connection_test = $ecs_service->test_connection();
                                         <tr data-scheduled-id="<?php echo esc_attr($scheduled['id']); ?>">
                                             <td><?php echo esc_html(wp_trim_words($scheduled['message'], 10)); ?></td>
                                             <td><?php echo $recipient_count; ?> recipients</td>
-                                            <td><?php echo esc_html(date('M j, Y g:i A', strtotime($scheduled['send_time']))); ?></td>
+                                            <td><?php echo esc_html(date_i18n('M j, Y g:i A', strtotime($scheduled['send_time']))); ?></td>
                                             <td>
-                                                <span class="ecs-status-badge ecs-status-pending">
-                                                    <?php _e('Pending', 'emergency-communication-system'); ?>
+                                                <span class="ecs-status-badge ecs-status-<?php echo esc_attr($scheduled['status']); ?>">
+                                                    <?php echo esc_html(ucfirst($scheduled['status'])); ?>
                                                 </span>
                                             </td>
                                             <td>
-                                                <button type="button" class="button button-small ecs-cancel-scheduled" 
-                                                        data-scheduled-id="<?php echo esc_attr($scheduled['id']); ?>">
-                                                    <?php _e('Cancel', 'emergency-communication-system'); ?>
-                                                </button>
+                                                <?php if ($scheduled['status'] === 'pending'): ?>
+                                                    <button type="button" class="button button-small ecs-cancel-scheduled" 
+                                                            data-scheduled-id="<?php echo esc_attr($scheduled['id']); ?>">
+                                                        <?php _e('Cancel', 'emergency-communication-system'); ?>
+                                                    </button>
+                                                <?php else: ?>
+                                                    —
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                            <p style="text-align: right; margin-top: 10px;">
+                                <a href="<?php echo admin_url('admin.php?page=ecs-message-history'); ?>" class="button">
+                                    <?php _e('View All Scheduled Messages →', 'emergency-communication-system'); ?>
+                                </a>
+                            </p>
                         <?php endif; ?>
                     </div>
                 </div>

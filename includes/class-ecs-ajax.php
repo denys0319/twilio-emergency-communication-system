@@ -29,6 +29,9 @@ class ECS_Ajax {
         add_action('wp_ajax_ecs_get_groups', array($this, 'get_groups'));
         add_action('wp_ajax_ecs_cancel_scheduled', array($this, 'delete_scheduled_message'));
         add_action('wp_ajax_ecs_bulk_action_contacts', array($this, 'bulk_action_contacts'));
+        add_action('wp_ajax_ecs_delete_message', array($this, 'delete_message'));
+        add_action('wp_ajax_ecs_bulk_delete_messages', array($this, 'bulk_delete_messages'));
+        add_action('wp_ajax_ecs_bulk_delete_scheduled', array($this, 'bulk_delete_scheduled'));
     }
     
     public function save_contact() {
@@ -414,9 +417,40 @@ class ECS_Ajax {
         
         $ecs_service = new ECS_Service();
         
-        $results = $ecs_service->send_bulk_message($recipients, $message, $from_number);
+        // Expand groups into individual contacts
+        $expanded_recipients = array();
+        foreach ($recipients as $recipient) {
+            if (isset($recipient['group_id'])) {
+                // This is a group, expand it to individual contacts
+                $contacts_result = $ecs_service->get_contacts($recipient['group_id'], 10000, 0);
+                if ($contacts_result['success']) {
+                    foreach ($contacts_result['contacts'] as $contact) {
+                        // Clean phone number of any hidden Unicode characters
+                        $clean_phone = preg_replace('/[^\+0-9]/', '', $contact['phone']);
+                        $expanded_recipients[] = array(
+                            'id' => $contact['id'],
+                            'name' => $contact['name'],
+                            'phone' => $clean_phone
+                        );
+                    }
+                }
+            } else {
+                // This is an individual contact or custom number
+                // Clean phone number of any hidden Unicode characters
+                if (isset($recipient['phone'])) {
+                    $recipient['phone'] = preg_replace('/[^\+0-9]/', '', $recipient['phone']);
+                }
+                $expanded_recipients[] = $recipient;
+            }
+        }
         
-        // Message history is automatically stored in Twilio
+        if (empty($expanded_recipients)) {
+            wp_send_json_error(array('message' => 'No valid recipients found'));
+        }
+        
+        $results = $ecs_service->send_bulk_message($expanded_recipients, $message, $from_number);
+        
+        // Message history is automatically stored in database
         
         wp_send_json_success(array(
             'message' => 'Message sent successfully',
@@ -441,7 +475,39 @@ class ECS_Ajax {
         }
         
         $ecs_service = new ECS_Service();
-        $result = $ecs_service->schedule_message($recipients, $message, $send_time, $from_number);
+        
+        // Expand groups into individual contacts
+        $expanded_recipients = array();
+        foreach ($recipients as $recipient) {
+            if (isset($recipient['group_id'])) {
+                // This is a group, expand it to individual contacts
+                $contacts_result = $ecs_service->get_contacts($recipient['group_id'], 10000, 0);
+                if ($contacts_result['success']) {
+                    foreach ($contacts_result['contacts'] as $contact) {
+                        // Clean phone number of any hidden Unicode characters
+                        $clean_phone = preg_replace('/[^\+0-9]/', '', $contact['phone']);
+                        $expanded_recipients[] = array(
+                            'id' => $contact['id'],
+                            'name' => $contact['name'],
+                            'phone' => $clean_phone
+                        );
+                    }
+                }
+            } else {
+                // This is an individual contact or custom number
+                // Clean phone number of any hidden Unicode characters
+                if (isset($recipient['phone'])) {
+                    $recipient['phone'] = preg_replace('/[^\+0-9]/', '', $recipient['phone']);
+                }
+                $expanded_recipients[] = $recipient;
+            }
+        }
+        
+        if (empty($expanded_recipients)) {
+            wp_send_json_error(array('message' => 'No valid recipients found'));
+        }
+        
+        $result = $ecs_service->schedule_message($expanded_recipients, $message, $send_time, $from_number);
         
         if ($result['success']) {
             wp_send_json_success(array(
@@ -513,12 +579,20 @@ class ECS_Ajax {
         }
         
         $message_id = sanitize_text_field($_POST['message_id']);
+        $action = isset($_POST['action_type']) ? sanitize_text_field($_POST['action_type']) : 'cancel';
         $ecs_service = new ECS_Service();
         
-        $result = $ecs_service->delete_scheduled_message($message_id);
+        // If action is cancel, mark as cancelled; if delete, remove completely
+        if ($action === 'delete') {
+            $result = $ecs_service->delete_scheduled_message($message_id);
+            $success_message = 'Scheduled message deleted successfully';
+        } else {
+            $result = $ecs_service->cancel_scheduled_message($message_id);
+            $success_message = 'Scheduled message cancelled successfully';
+        }
         
         if ($result['success']) {
-            wp_send_json_success(array('message' => 'Scheduled message deleted successfully'));
+            wp_send_json_success(array('message' => $success_message));
         } else {
             wp_send_json_error(array('message' => $result['error']));
         }
@@ -595,5 +669,79 @@ class ECS_Ajax {
         }
         
         wp_send_json_success(array('message' => $message));
+    }
+    
+    public function delete_message() {
+        check_ajax_referer('ecs_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        
+        $message_id = intval($_POST['message_id']);
+        
+        global $wpdb;
+        $table_messages = $wpdb->prefix . 'ecs_messages';
+        
+        $result = $wpdb->delete($table_messages, array('id' => $message_id), array('%d'));
+        
+        if ($result === false) {
+            wp_send_json_error(array('message' => 'Failed to delete message'));
+        }
+        
+        wp_send_json_success(array('message' => 'Message deleted successfully'));
+    }
+    
+    public function bulk_delete_messages() {
+        check_ajax_referer('ecs_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        
+        $message_ids = isset($_POST['message_ids']) ? array_map('intval', $_POST['message_ids']) : array();
+        
+        if (empty($message_ids)) {
+            wp_send_json_error(array('message' => 'No messages selected'));
+        }
+        
+        global $wpdb;
+        $table_messages = $wpdb->prefix . 'ecs_messages';
+        
+        $placeholders = implode(',', array_fill(0, count($message_ids), '%d'));
+        $query = "DELETE FROM $table_messages WHERE id IN ($placeholders)";
+        $result = $wpdb->query($wpdb->prepare($query, $message_ids));
+        
+        if ($result === false) {
+            wp_send_json_error(array('message' => 'Failed to delete messages'));
+        }
+        
+        wp_send_json_success(array('message' => count($message_ids) . ' message(s) deleted successfully'));
+    }
+    
+    public function bulk_delete_scheduled() {
+        check_ajax_referer('ecs_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        
+        $scheduled_ids = isset($_POST['scheduled_ids']) ? array_map('intval', $_POST['scheduled_ids']) : array();
+        
+        if (empty($scheduled_ids)) {
+            wp_send_json_error(array('message' => 'No scheduled messages selected'));
+        }
+        
+        $ecs_service = new ECS_Service();
+        
+        foreach ($scheduled_ids as $scheduled_id) {
+            // Cancel cron job
+            wp_clear_scheduled_hook('ecs_send_scheduled_message', array($scheduled_id));
+            
+            // Delete from database
+            $ecs_service->delete_scheduled_message($scheduled_id);
+        }
+        
+        wp_send_json_success(array('message' => count($scheduled_ids) . ' scheduled message(s) deleted successfully'));
     }
 }

@@ -137,10 +137,21 @@ jQuery(document).ready(function($) {
             var sendType = $(this).val();
             if (sendType === 'scheduled') {
                 $('#ecs-schedule-row').show();
+                // Set current time as default and minimum
+                setCurrentTimeAsDefault();
+                updateScheduleTimeMin();
             } else {
                 $('#ecs-schedule-row').hide();
             }
         });
+        
+        // Validate scheduled time on change
+        $('#ecs-schedule-time').on('change', function() {
+            validateScheduledTime();
+        });
+        
+        // Update minimum datetime periodically
+        setInterval(updateScheduleTimeMin, 30000); // Update every 30 seconds
         
         // Preview message
         $('#ecs-preview-message').on('click', function() {
@@ -148,13 +159,9 @@ jQuery(document).ready(function($) {
         });
         
         // Send message
-        $('#ecs-send-message').on('click', function() {
+        $('#ecs-send-message').on('click', function(e) {
+            e.preventDefault();
             sendMessage();
-        });
-        
-        // Save draft
-        $('#ecs-save-draft').on('click', function() {
-            saveDraft();
         });
         
         // Initialize datetime picker (HTML5 datetime-local)
@@ -175,11 +182,27 @@ jQuery(document).ready(function($) {
             showFullMessage(message);
         });
         
+        // Delete single message
+        $(document).on('click', '.ecs-delete-message', function() {
+            var messageId = $(this).data('message-id');
+            if (confirm('Are you sure you want to delete this message?')) {
+                deleteMessage(messageId);
+            }
+        });
+        
         // Cancel scheduled message
         $(document).on('click', '.ecs-cancel-scheduled', function() {
             var scheduledId = $(this).data('scheduled-id');
-            if (confirm(ecs_ajax.strings.confirm_delete)) {
+            if (confirm(ecs_ajax.strings.confirm_cancel)) {
                 cancelScheduledMessage(scheduledId);
+            }
+        });
+        
+        // Delete single scheduled message
+        $(document).on('click', '.ecs-delete-scheduled-single', function() {
+            var scheduledId = $(this).data('scheduled-id');
+            if (confirm('Are you sure you want to delete this scheduled message?')) {
+                deleteScheduledMessage(scheduledId);
             }
         });
         
@@ -188,10 +211,11 @@ jQuery(document).ready(function($) {
             refreshAllStatuses();
         });
         
-        // Export messages
-        $('#ecs-export-messages').on('click', function() {
-            exportMessages();
-        });
+        // Initialize bulk delete for messages
+        initBulkDeleteMessages();
+        
+        // Initialize bulk delete for scheduled messages
+        initBulkDeleteScheduled();
     }
     
     // Character count
@@ -538,6 +562,84 @@ jQuery(document).ready(function($) {
         return recipients;
     }
     
+    function getWordPressTime() {
+        // Get current WordPress time using the calculated offset
+        if (typeof window.ecsTimeOffset !== 'undefined') {
+            return new Date(new Date().getTime() + window.ecsTimeOffset);
+        }
+        // Fallback to browser time if offset not available
+        return new Date();
+    }
+    
+    function formatDateTimeLocal(date) {
+        // Format date as YYYY-MM-DDTHH:MM for datetime-local input
+        // Use UTC methods to avoid timezone conversion
+        var year = date.getUTCFullYear();
+        var month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        var day = String(date.getUTCDate()).padStart(2, '0');
+        var hours = String(date.getUTCHours()).padStart(2, '0');
+        var minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        return year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
+    }
+    
+    function setCurrentTimeAsDefault() {
+        var wpNow = getWordPressTime();
+        var currentDateTime = formatDateTimeLocal(wpNow);
+        $('#ecs-schedule-time').val(currentDateTime);
+        $('#ecs-schedule-time').attr('min', currentDateTime);
+    }
+    
+    function updateScheduleTimeMin() {
+        var wpNow = getWordPressTime();
+        var minDateTime = formatDateTimeLocal(wpNow);
+        $('#ecs-schedule-time').attr('min', minDateTime);
+    }
+    
+    function validateScheduledTime() {
+        var scheduleTimeInput = $('#ecs-schedule-time');
+        var selectedValue = scheduleTimeInput.val();
+        
+        if (!selectedValue) {
+            return false;
+        }
+        
+        // Parse the selected value as WordPress timezone
+        // The input value is in format YYYY-MM-DDTHH:MM
+        var parts = selectedValue.split('T');
+        var dateParts = parts[0].split('-');
+        var timeParts = parts[1].split(':');
+        
+        // Create a UTC date from the selected value (since input is in WP timezone which is UTC)
+        var selectedTime = Date.UTC(
+            parseInt(dateParts[0]), // year
+            parseInt(dateParts[1]) - 1, // month (0-indexed)
+            parseInt(dateParts[2]), // day
+            parseInt(timeParts[0]), // hours
+            parseInt(timeParts[1]), // minutes
+            0 // seconds
+        );
+        
+        // Get current WordPress time in UTC milliseconds
+        var wpNow = getWordPressTime().getTime();
+        
+        // Add 2 minute buffer (120000 ms)
+        var minTime = wpNow + 120000;
+        
+        console.log('Selected time (UTC ms):', selectedTime, 'Date:', new Date(selectedTime).toUTCString());
+        console.log('WordPress now (UTC ms):', wpNow, 'Date:', new Date(wpNow).toUTCString());
+        console.log('Min time (UTC ms):', minTime, 'Date:', new Date(minTime).toUTCString());
+        console.log('Valid?', selectedTime >= minTime);
+        
+        if (selectedTime < minTime) {
+            alert('You cannot schedule a message in the past or too soon. Please select a time at least 2 minutes in the future.');
+            // Reset to WordPress time + 2 minutes
+            var futureTime = new Date(wpNow + 120000);
+            scheduleTimeInput.val(formatDateTimeLocal(futureTime));
+            return false;
+        }
+        return true;
+    }
+    
     function sendMessage() {
         var message = $('#ecs_message_text').val();
         var recipients = getSelectedRecipients();
@@ -545,9 +647,61 @@ jQuery(document).ready(function($) {
         var sendType = $('#ecs-send-type').val();
         var scheduleTime = $('#ecs-schedule-time').val();
         
+        console.log('Send Type:', sendType);
+        console.log('Schedule Time (raw):', scheduleTime);
+        console.log('Schedule Time Input Element:', $('#ecs-schedule-time')[0]);
+        
         if (!message || recipients.length === 0) {
             alert('Please enter a message and select recipients.');
             return;
+        }
+        
+        // Validate scheduled time is not in the past
+        if (sendType === 'scheduled') {
+            if (!scheduleTime) {
+                alert('Please select a schedule time.');
+                return;
+            }
+            
+            // Parse the selected value as WordPress timezone
+            var parts = scheduleTime.split('T');
+            var dateParts = parts[0].split('-');
+            var timeParts = parts[1].split(':');
+            
+            // Create a UTC timestamp from the selected value
+            var selectedTimeMs = Date.UTC(
+                parseInt(dateParts[0]),
+                parseInt(dateParts[1]) - 1,
+                parseInt(dateParts[2]),
+                parseInt(timeParts[0]),
+                parseInt(timeParts[1]),
+                0
+            );
+            
+            // Get current WordPress time in milliseconds
+            var wpNow = (typeof window.ecsTimeOffset !== 'undefined') 
+                ? new Date().getTime() + window.ecsTimeOffset
+                : new Date().getTime();
+            
+            // Add 2-minute buffer
+            var minTime = wpNow + 120000;
+            
+            console.log('=== VALIDATION DEBUG ===');
+            console.log('Selected:', new Date(selectedTimeMs).toUTCString());
+            console.log('WP Now:', new Date(wpNow).toUTCString());
+            console.log('Min Time:', new Date(minTime).toUTCString());
+            console.log('Is valid?', selectedTimeMs >= minTime);
+            console.log('======================');
+            
+            if (selectedTimeMs < minTime) {
+                var wpNowDate = new Date(wpNow);
+                var selectedDate = new Date(selectedTimeMs);
+                alert('You cannot schedule a message in the past or too soon.\n\n' +
+                      'WordPress current time: ' + wpNowDate.toUTCString() + '\n' +
+                      'Selected time: ' + selectedDate.toUTCString() + '\n\n' +
+                      'Please select a time at least 2 minutes in the future.');
+                return;
+            }
         }
         
         var action = sendType === 'immediate' ? 'ecs_send_message' : 'ecs_schedule_message';
@@ -580,16 +734,12 @@ jQuery(document).ready(function($) {
                     alert(response.data.message || ecs_ajax.strings.error);
                 }
             },
-            error: function() {
-                alert(ecs_ajax.strings.error);
+            error: function(xhr, status, error) {
+                alert('Error: ' + (xhr.responseJSON ? xhr.responseJSON.data.message : error));
             }
         });
     }
     
-    function saveDraft() {
-        // Implement draft saving functionality
-        alert('Draft saving functionality not yet implemented.');
-    }
     
     function checkMessageStatus(messageSid) {
         $.ajax({
@@ -623,13 +773,15 @@ jQuery(document).ready(function($) {
             url: ecs_ajax.ajax_url,
             type: 'POST',
             data: {
-                action: 'ecs_delete_scheduled_message',
+                action: 'ecs_cancel_scheduled',
                 message_id: scheduledId,
+                action_type: 'cancel',
                 nonce: ecs_ajax.nonce
             },
             success: function(response) {
                 if (response.success) {
-                    $('tr[data-scheduled-id="' + scheduledId + '"]').remove();
+                    alert('Scheduled message cancelled successfully!');
+                    location.reload();
                 } else {
                     alert(response.data.message || ecs_ajax.strings.error);
                 }
@@ -649,18 +801,190 @@ jQuery(document).ready(function($) {
         });
     }
     
-    function exportMessages() {
-        // Implement message export functionality
-        alert('Export functionality not yet implemented.');
+    function deleteMessage(messageId) {
+        $.ajax({
+            url: ecs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'ecs_delete_message',
+                message_id: messageId,
+                nonce: ecs_ajax.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('tr[data-message-id="' + messageId + '"]').fadeOut(function() {
+                        $(this).remove();
+                    });
+                } else {
+                    alert(response.data.message || 'Failed to delete message');
+                }
+            },
+            error: function() {
+                alert('Error deleting message');
+            }
+        });
     }
     
-    // Auto-submit filter form when dropdown changes
-    $(document).ready(function() {
-        $('#ecs-group-filter').on('change', function() {
-            $(this).closest('form').submit();
+    function deleteScheduledMessage(scheduledId) {
+        $.ajax({
+            url: ecs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'ecs_cancel_scheduled',
+                message_id: scheduledId,
+                action_type: 'delete',
+                nonce: ecs_ajax.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('tr[data-scheduled-id="' + scheduledId + '"]').fadeOut(function() {
+                        $(this).remove();
+                    });
+                } else {
+                    alert(response.data.message || 'Failed to delete scheduled message');
+                }
+            },
+            error: function() {
+                alert('Error deleting scheduled message');
+            }
+        });
+    }
+    
+    function initBulkDeleteMessages() {
+        // Select all checkbox (both top and header)
+        $('#ecs-select-all-messages, #ecs-select-all-messages-header').on('change', function() {
+            var isChecked = $(this).prop('checked');
+            $('.ecs-message-checkbox').prop('checked', isChecked);
+            $('#ecs-select-all-messages, #ecs-select-all-messages-header').prop('checked', isChecked);
+            updateMessageSelectionCount();
         });
         
-        // Initialize bulk actions
+        // Individual checkbox change
+        $(document).on('change', '.ecs-message-checkbox', function() {
+            updateMessageSelectionCount();
+            updateSelectAllCheckboxState('#ecs-select-all-messages', '.ecs-message-checkbox');
+        });
+        
+        // Delete selected button
+        $('#ecs-delete-selected-messages').on('click', function() {
+            var selectedIds = $('.ecs-message-checkbox:checked').map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (selectedIds.length === 0) {
+                alert('Please select at least one message to delete');
+                return;
+            }
+            
+            if (confirm('Are you sure you want to delete ' + selectedIds.length + ' message(s)? This cannot be undone.')) {
+                bulkDeleteMessages(selectedIds);
+            }
+        });
+    }
+    
+    function initBulkDeleteScheduled() {
+        // Select all checkbox (both top and header)
+        $('#ecs-select-all-scheduled, #ecs-select-all-scheduled-header').on('change', function() {
+            var isChecked = $(this).prop('checked');
+            $('.ecs-scheduled-checkbox').prop('checked', isChecked);
+            $('#ecs-select-all-scheduled, #ecs-select-all-scheduled-header').prop('checked', isChecked);
+            updateScheduledSelectionCount();
+        });
+        
+        // Individual checkbox change
+        $(document).on('change', '.ecs-scheduled-checkbox', function() {
+            updateScheduledSelectionCount();
+            updateSelectAllCheckboxState('#ecs-select-all-scheduled', '.ecs-scheduled-checkbox');
+        });
+        
+        // Delete selected button
+        $('#ecs-delete-selected-scheduled').on('click', function() {
+            var selectedIds = $('.ecs-scheduled-checkbox:checked').map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (selectedIds.length === 0) {
+                alert('Please select at least one scheduled message to delete');
+                return;
+            }
+            
+            if (confirm('Are you sure you want to delete ' + selectedIds.length + ' scheduled message(s)? This cannot be undone.')) {
+                bulkDeleteScheduled(selectedIds);
+            }
+        });
+    }
+    
+    function updateMessageSelectionCount() {
+        var count = $('.ecs-message-checkbox:checked').length;
+        $('#ecs-selected-messages-count').text(count > 0 ? count + ' selected' : '');
+    }
+    
+    function updateScheduledSelectionCount() {
+        var count = $('.ecs-scheduled-checkbox:checked').length;
+        $('#ecs-selected-scheduled-count').text(count > 0 ? count + ' selected' : '');
+    }
+    
+    function updateSelectAllCheckboxState(selectAllId, checkboxClass) {
+        var total = $(checkboxClass).length;
+        var checked = $(checkboxClass + ':checked').length;
+        
+        if (checked === 0) {
+            $(selectAllId).prop('indeterminate', false).prop('checked', false);
+        } else if (checked === total) {
+            $(selectAllId).prop('indeterminate', false).prop('checked', true);
+        } else {
+            $(selectAllId).prop('indeterminate', true);
+        }
+    }
+    
+    function bulkDeleteMessages(messageIds) {
+        $.ajax({
+            url: ecs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'ecs_bulk_delete_messages',
+                message_ids: messageIds,
+                nonce: ecs_ajax.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert(response.data.message);
+                    location.reload();
+                } else {
+                    alert(response.data.message || 'Failed to delete messages');
+                }
+            },
+            error: function() {
+                alert('Error deleting messages');
+            }
+        });
+    }
+    
+    function bulkDeleteScheduled(scheduledIds) {
+        $.ajax({
+            url: ecs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'ecs_bulk_delete_scheduled',
+                scheduled_ids: scheduledIds,
+                nonce: ecs_ajax.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert(response.data.message);
+                    location.reload();
+                } else {
+                    alert(response.data.message || 'Failed to delete scheduled messages');
+                }
+            },
+            error: function() {
+                alert('Error deleting scheduled messages');
+            }
+        });
+    }
+    
+    // Initialize bulk actions
+    $(document).ready(function() {
         initBulkActions();
     });
     

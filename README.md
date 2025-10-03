@@ -2,16 +2,29 @@
 
 A comprehensive WordPress plugin for emergency communication using Twilio's SMS API. This plugin allows administrators to manage contacts, create groups, compose emergency alerts, and send messages to individuals or groups with delivery tracking.
 
+## 📚 Documentation
+
+**[Read the Complete User Guide →](USER_GUIDE.md)**
+
+The detailed User Guide covers:
+- System overview and architecture
+- Contact and group management
+- Sending immediate and scheduled messages
+- Understanding message statuses (with detailed explanations)
+- Message history and filtering
+- Troubleshooting and best practices
+
 ## Features
 
 - **Contact Management**: Upload contacts from CSV/Excel files or add individually
 - **Group Management**: Create and manage contact groups for organized messaging
 - **Message Composition**: Compose emergency alerts with character count and preview
 - **Flexible Recipients**: Send to groups, individuals, or custom phone numbers
-- **Message Scheduling**: Schedule messages for future delivery
-- **Delivery Tracking**: Monitor message status and delivery confirmations
-- **Twilio Integration**: Direct integration with Twilio's SMS API
-- **Twilio-Only Storage**: All data stored exclusively in Twilio services - no WordPress database tables
+- **Message Scheduling**: Schedule messages for future delivery with WordPress cron
+- **Delivery Tracking**: Monitor message status and real-time delivery confirmations from Twilio
+- **Status Filtering**: Filter messages by delivery status (queued, sent, delivered, failed, etc.)
+- **Bulk Operations**: Select and delete multiple messages or scheduled jobs
+- **Twilio Integration**: Direct integration with Twilio's SMS API for reliable delivery
 
 ## Requirements
 
@@ -90,10 +103,16 @@ If you don't have a Twilio account:
 ### Monitoring Messages
 
 1. Go to **Emergency Communication > Message History**
-2. View all sent messages with delivery status
-3. Use **Check Status** to refresh message status from Twilio
-4. Filter messages by status (pending, sent, delivered, failed)
-5. View scheduled messages and cancel if needed
+2. View all sent messages with real-time Twilio delivery status
+3. **Filter by Status**: queued, sending, sent, delivered, undelivered, failed
+4. **Refresh Status**: Automatically updates messages less than 24 hours old
+5. **Scheduled Messages**: View and manage scheduled message jobs
+   - Filter: pending, sent, cancelled, failed
+   - Cancel pending messages or delete completed ones
+
+**Understanding Statuses**:
+- **Message History**: Individual SMS delivery status from Twilio (queued → sent → delivered)
+- **Scheduled Messages**: Overall scheduled job status (pending → sent)
 
 ## File Structure
 
@@ -125,12 +144,19 @@ emergency-communication-system/
 
 ## Data Storage
 
-The plugin stores all data exclusively in Twilio services:
+The plugin uses a hybrid storage approach:
 
-- **Twilio Messaging Services**: Used to store contact information and groups
-- **Twilio Messages API**: Stores all message history and delivery status
-- **Twilio Phone Numbers**: Manages sender phone numbers
-- **No WordPress Database Tables**: Zero data duplication - everything lives in Twilio
+- **WordPress Database**: Stores contacts, groups, message history, and scheduled messages
+  - `wp_ecs_contact_groups` - Contact groups
+  - `wp_ecs_contacts` - Individual contacts  
+  - `wp_ecs_messages` - Message history with Twilio statuses
+  - `wp_ecs_scheduled_messages` - Scheduled message jobs
+  - `wp_ecs_message_templates` - Message templates
+
+- **Twilio API**: Handles actual SMS sending and provides real-time delivery status
+  - Messages are sent through Twilio's Messages API
+  - Status updates are fetched from Twilio for delivery tracking
+  - No contact data is stored in Twilio (sent per-message only)
 
 ## Security Features
 
@@ -176,6 +202,40 @@ For support and feature requests, please contact the plugin developer or create 
 
 This plugin is licensed under the GPL v2 or later.
 
+## Key Concepts
+
+### Message Statuses
+
+**Individual Messages (Message History)**:
+- `queued` - Waiting in Twilio queue
+- `sending` - Being sent by Twilio
+- `sent` - Delivered to carrier
+- `delivered` - Delivered to recipient's device ✅
+- `undelivered` - Could not be delivered
+- `failed` - Failed to send
+
+**Scheduled Messages**:
+- `pending` - Waiting for scheduled time
+- `sent` - Job executed successfully
+- `cancelled` - User cancelled the job
+- `failed` - System error during execution
+
+### Workflow
+
+```
+Create Scheduled Message
+    ↓
+Status: pending (waiting)
+    ↓
+Cron executes at scheduled time
+    ↓
+Status: sent (scheduled message)
+    ↓
+Creates individual messages in Message History
+    ↓
+Each message: queued → sending → sent → delivered
+```
+
 ## Changelog
 
 ### Version 1.0.0
@@ -183,6 +243,9 @@ This plugin is licensed under the GPL v2 or later.
 - Contact management (individual and bulk upload)
 - Contact group management
 - Message composition and sending
-- Message scheduling
-- Delivery status tracking
-- Twilio SMS integration
+- Message scheduling with WordPress cron
+- Real-time delivery status tracking from Twilio
+- Status filtering for message history and scheduled messages
+- Bulk delete operations
+- Auto-refresh for recent message statuses
+- Cancel/delete scheduled messages

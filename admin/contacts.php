@@ -57,59 +57,61 @@ $total_pages = ceil($total_contacts / $per_page);
                     <h2 id="ecs-modal-title"><?php _e('Add Contact', 'emergency-communication-system'); ?></h2>
                     <span class="ecs-modal-close">&times;</span>
                 </div>
-                <form id="ecs-contact-form">
-                    <?php wp_nonce_field('ecs_contact', 'ecs_contact_nonce'); ?>
-                    <input type="hidden" id="ecs_contact_id" name="ecs_contact_id" value="" />
-                    
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row">
-                                <label for="ecs_contact_phone"><?php _e('Phone Number', 'emergency-communication-system'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" id="ecs_contact_phone" name="ecs_contact_phone" 
-                                       class="regular-text" placeholder="+1234567890" required />
-                                <p class="description">
-                                    <?php _e('Enter phone number in E.164 format (e.g., +1234567890)', 'emergency-communication-system'); ?>
-                                </p>
-                            </td>
-                        </tr>
+                <div class="ecs-modal-body">
+                    <form id="ecs-contact-form">
+                        <?php wp_nonce_field('ecs_contact', 'ecs_contact_nonce'); ?>
+                        <input type="hidden" id="ecs_contact_id" name="ecs_contact_id" value="" />
                         
-                        <tr>
-                            <th scope="row">
-                                <label for="ecs_contact_name"><?php _e('Name', 'emergency-communication-system'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" id="ecs_contact_name" name="ecs_contact_name" 
-                                       class="regular-text" placeholder="<?php _e('Contact Name', 'emergency-communication-system'); ?>" />
-                            </td>
-                        </tr>
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="ecs_contact_phone"><?php _e('Phone Number', 'emergency-communication-system'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="ecs_contact_phone" name="ecs_contact_phone" 
+                                        class="regular-text" placeholder="+1234567890" required />
+                                    <p class="description">
+                                        <?php _e('Enter phone number in E.164 format (e.g., +1234567890)', 'emergency-communication-system'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="ecs_contact_name"><?php _e('Name', 'emergency-communication-system'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="ecs_contact_name" name="ecs_contact_name" 
+                                        class="regular-text" placeholder="<?php _e('Contact Name', 'emergency-communication-system'); ?>" />
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="ecs_contact_group"><?php _e('Group', 'emergency-communication-system'); ?></label>
+                                </th>
+                                <td>
+                                    <select id="ecs_contact_group" name="ecs_contact_group">
+                                        <option value=""><?php _e('No Group', 'emergency-communication-system'); ?></option>
+                                        <?php foreach ($groups as $group): ?>
+                                            <option value="<?php echo esc_attr($group['id']); ?>">
+                                                <?php echo esc_html($group['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
                         
-                        <tr>
-                            <th scope="row">
-                                <label for="ecs_contact_group"><?php _e('Group', 'emergency-communication-system'); ?></label>
-                            </th>
-                            <td>
-                                <select id="ecs_contact_group" name="ecs_contact_group">
-                                    <option value=""><?php _e('No Group', 'emergency-communication-system'); ?></option>
-                                    <?php foreach ($groups as $group): ?>
-                                        <option value="<?php echo esc_attr($group['id']); ?>">
-                                            <?php echo esc_html($group['name']); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <p class="submit">
-                        <input type="submit" name="ecs_contact_submit" class="button-primary" 
-                               value="<?php _e('Save Contact', 'emergency-communication-system'); ?>" />
-                        <button type="button" class="button ecs-modal-cancel">
-                            <?php _e('Cancel', 'emergency-communication-system'); ?>
-                        </button>
-                    </p>
-                </form>
+                        <p class="submit">
+                            <input type="submit" name="ecs_contact_submit" class="button-primary" 
+                                value="<?php _e('Save Contact', 'emergency-communication-system'); ?>" />
+                            <button type="button" class="button ecs-modal-cancel">
+                                <?php _e('Cancel', 'emergency-communication-system'); ?>
+                            </button>
+                        </p>
+                    </form>
+                </div>
             </div>
         </div>
         
@@ -120,32 +122,34 @@ $total_pages = ceil($total_contacts / $per_page);
                     <h2><?php _e('Upload Contacts from File', 'emergency-communication-system'); ?></h2>
                     <span class="ecs-modal-close">&times;</span>
                 </div>
-                <form id="ecs-upload-form" enctype="multipart/form-data">
-                    <?php wp_nonce_field('ecs_upload', 'ecs_upload_nonce'); ?>
-                    
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row">
-                                <label for="ecs_contact_file"><?php _e('Select File', 'emergency-communication-system'); ?></label>
-                            </th>
-                            <td>
-                                <input type="file" id="ecs_contact_file" name="ecs_contact_file" 
-                                       accept=".csv,.xlsx,.xls" required />
-                                <p class="description">
-                                    <?php _e('Upload CSV file with "Display name" column and either "Phone number" or "Mobile Phone" column. Phone numbers will be automatically normalized to E.164 format.', 'emergency-communication-system'); ?>
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <p class="submit">
-                        <input type="submit" name="ecs_upload_submit" class="button-primary" 
-                               value="<?php _e('Upload Contacts', 'emergency-communication-system'); ?>" />
-                        <button type="button" class="button ecs-modal-cancel">
-                            <?php _e('Cancel', 'emergency-communication-system'); ?>
-                        </button>
-                    </p>
-                </form>
+                <div class="ecs-modal-body">
+                    <form id="ecs-upload-form" enctype="multipart/form-data">
+                        <?php wp_nonce_field('ecs_upload', 'ecs_upload_nonce'); ?>
+                        
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="ecs_contact_file"><?php _e('Select File', 'emergency-communication-system'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="file" id="ecs_contact_file" name="ecs_contact_file" 
+                                        accept=".csv,.xlsx,.xls" required />
+                                    <p class="description">
+                                        <?php _e('Upload CSV file with "Display name" column and either "Phone number" or "Mobile Phone" column. Phone numbers will be automatically normalized to E.164 format.', 'emergency-communication-system'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <p class="submit">
+                            <input type="submit" name="ecs_upload_submit" class="button-primary" 
+                                value="<?php _e('Upload Contacts', 'emergency-communication-system'); ?>" />
+                            <button type="button" class="button ecs-modal-cancel">
+                                <?php _e('Cancel', 'emergency-communication-system'); ?>
+                            </button>
+                        </p>
+                    </form>
+                </div>
             </div>
         </div>
         
@@ -166,9 +170,6 @@ $total_pages = ceil($total_contacts / $per_page);
                         <?php endforeach; ?>
                     </select>
                     <input type="submit" class="button button-primary" value="<?php _e('Apply Filter', 'emergency-communication-system'); ?>" />
-                    <a href="<?php echo admin_url('admin.php?page=ecs-phone-lists'); ?>" class="button">
-                        <?php _e('Clear Filter', 'emergency-communication-system'); ?>
-                    </a>
                 </div>
             </form>
             <div class="ecs-filter-results">

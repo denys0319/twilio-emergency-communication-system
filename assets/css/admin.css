@@ -589,6 +589,17 @@
     padding: 15px;
     margin-bottom: 20px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ecs-bulk-actions input[type="checkbox"] {
+    margin: 0;
+}
+
+.ecs-bulk-actions label {
+    margin-right: 20px;
 }
 
 .ecs-bulk-controls {
@@ -617,8 +628,7 @@
 }
 
 .ecs-selection-info {
-    padding-top: 10px;
-    border-top: 1px solid #f0f0f1;
+    padding-left: 10px;
     color: #646970;
     font-size: 14px;
     font-weight: 600;

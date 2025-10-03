@@ -29,30 +29,32 @@ $groups = $groups_result['success'] ? $groups_result['groups'] : array();
                     <h2 id="ecs-group-modal-title"><?php _e('Add Contact Group', 'emergency-communication-system'); ?></h2>
                     <span class="ecs-modal-close">&times;</span>
                 </div>
-                <form id="ecs-group-form">
-                    <?php wp_nonce_field('ecs_group', 'ecs_group_nonce'); ?>
-                    <input type="hidden" id="ecs_group_id" name="ecs_group_id" value="" />
-                    
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row">
-                                <label for="ecs_group_name"><?php _e('Group Name', 'emergency-communication-system'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" id="ecs_group_name" name="ecs_group_name" 
-                                       class="regular-text" placeholder="<?php _e('Group Name', 'emergency-communication-system'); ?>" required />
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <p class="submit">
-                        <input type="submit" name="ecs_group_submit" class="button-primary" 
-                               value="<?php _e('Save Group', 'emergency-communication-system'); ?>" />
-                        <button type="button" class="button ecs-modal-cancel">
-                            <?php _e('Cancel', 'emergency-communication-system'); ?>
-                        </button>
-                    </p>
-                </form>
+                <div class="ecs-modal-body">
+                    <form id="ecs-group-form">
+                        <?php wp_nonce_field('ecs_group', 'ecs_group_nonce'); ?>
+                        <input type="hidden" id="ecs_group_id" name="ecs_group_id" value="" />
+                        
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="ecs_group_name"><?php _e('Group Name', 'emergency-communication-system'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" id="ecs_group_name" name="ecs_group_name" 
+                                        class="regular-text" placeholder="<?php _e('Group Name', 'emergency-communication-system'); ?>" required />
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <p class="submit">
+                            <input type="submit" name="ecs_group_submit" class="button-primary" 
+                                value="<?php _e('Save Group', 'emergency-communication-system'); ?>" />
+                            <button type="button" class="button ecs-modal-cancel">
+                                <?php _e('Cancel', 'emergency-communication-system'); ?>
+                            </button>
+                        </p>
+                    </form>
+                </div>
             </div>
         </div>
         

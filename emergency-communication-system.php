@@ -31,6 +31,10 @@ require_once ECS_PLUGIN_PATH . 'includes/class-ecs-cron.php';
 
 // Initialize the plugin
 function ecs_init() {
+    // Check and upgrade database tables if needed
+    $ecs_database = new ECS_Database();
+    $ecs_database->upgrade_tables();
+    
     $ecs_core = new ECS_Core();
     $ecs_core->init();
     

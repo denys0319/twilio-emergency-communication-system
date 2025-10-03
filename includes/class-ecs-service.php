@@ -276,7 +276,7 @@ class ECS_Service {
     /**
      * Send message using Twilio
      */
-    public function send_message($to, $message, $from = null) {
+    public function send_message($to, $message, $from = null, $recipient_name = '') {
         if (!$this->client) {
             return array('success' => false, 'error' => 'Twilio client not initialized');
         }
@@ -292,8 +292,8 @@ class ECS_Service {
                 )
             );
             
-            // Store message in database
-            $this->store_message($message_obj, $to, $message, $from);
+            // Store message in database with recipient name
+            $this->store_message($message_obj, $to, $message, $from, $recipient_name);
             
             return array(
                 'success' => true,
@@ -305,6 +305,7 @@ class ECS_Service {
                 'date_created' => $message_obj->dateCreated->format('Y-m-d H:i:s')
             );
         } catch (Exception $e) {
+            error_log('Twilio SMS Error: ' . $e->getMessage());
             return array('success' => false, 'error' => $e->getMessage());
         }
     }
@@ -321,8 +322,10 @@ class ECS_Service {
         $results = array();
         
         foreach ($recipients as $recipient) {
-            $result = $this->send_message($recipient['phone'], $message, $from);
-            $result['recipient_name'] = $recipient['name'] ?? '';
+            // Pass recipient name to send_message
+            $recipient_name = $recipient['name'] ?? '';
+            $result = $this->send_message($recipient['phone'], $message, $from, $recipient_name);
+            $result['recipient_name'] = $recipient_name;
             $result['recipient_id'] = $recipient['id'] ?? '';
             $results[] = $result;
         }
@@ -333,21 +336,40 @@ class ECS_Service {
     /**
      * Store message in database
      */
-    private function store_message($message_obj, $to, $message, $from) {
+    private function store_message($message_obj, $to, $message, $from, $recipient_name = '') {
         $table_messages = $this->wpdb->prefix . 'ecs_messages';
+        
+        // Store in WordPress timezone
+        $sent_at = null;
+        if ($message_obj->dateSent) {
+            // Convert Twilio UTC time to WordPress timezone
+            $gmt_offset = get_option('gmt_offset', 0);
+            $sent_at = date('Y-m-d H:i:s', $message_obj->dateSent->getTimestamp() + ($gmt_offset * 3600));
+        }
+        
+        // Get current WordPress time
+        $created_at = current_time('mysql');
         
         $data = array(
             'twilio_sid' => $message_obj->sid,
             'recipient_phone' => $to,
+            'recipient_name' => $recipient_name, // Store recipient name
             'message' => $message,
             'from_number' => $from,
             'status' => $message_obj->status,
-            'sent_at' => $message_obj->dateSent ? $message_obj->dateSent->format('Y-m-d H:i:s') : null,
+            'sent_at' => $sent_at,
+            'created_at' => $created_at,
             'error_code' => $message_obj->errorCode,
             'error_message' => $message_obj->errorMessage
         );
         
-        $this->wpdb->insert($table_messages, $data);
+        error_log("Storing message - Recipient: $recipient_name ($to), created_at: $created_at, sent_at: $sent_at");
+        
+        $result = $this->wpdb->insert($table_messages, $data);
+        
+        if ($result === false) {
+            error_log("Failed to insert message: " . $this->wpdb->last_error);
+        }
     }
     
     /**
@@ -369,27 +391,110 @@ class ECS_Service {
     }
     
     /**
+     * Get message status from Twilio and update database
+     */
+    public function get_message_status($message_sid) {
+        if (!$this->client) {
+            return array('success' => false, 'error' => 'Twilio client not initialized');
+        }
+        
+        try {
+            // Fetch message status from Twilio
+            $message = $this->client->messages($message_sid)->fetch();
+            
+            // Prepare update data
+            $update_data = array(
+                'status' => $message->status,
+                'error_code' => $message->errorCode,
+                'error_message' => $message->errorMessage
+            );
+            
+            // If message is delivered, update delivered_at timestamp
+            // Use dateUpdated which reflects when status last changed (including to 'delivered')
+            if ($message->status === 'delivered' && !empty($message->dateUpdated)) {
+                // Store in WordPress timezone
+                $update_data['delivered_at'] = date('Y-m-d H:i:s', $message->dateUpdated->getTimestamp() + (get_option('gmt_offset', 0) * 3600));
+            }
+            
+            // Update status in database
+            $table_messages = $this->wpdb->prefix . 'ecs_messages';
+            $this->wpdb->update(
+                $table_messages,
+                $update_data,
+                array('twilio_sid' => $message_sid),
+                array_fill(0, count($update_data), '%s'),
+                array('%s')
+            );
+            
+            return array(
+                'success' => true,
+                'status' => $message->status,
+                'to' => $message->to,
+                'from' => $message->from,
+                'date_sent' => $message->dateSent ? $message->dateSent->format('Y-m-d H:i:s') : null,
+                'error_code' => $message->errorCode,
+                'error_message' => $message->errorMessage
+            );
+        } catch (Exception $e) {
+            return array('success' => false, 'error' => $e->getMessage());
+        }
+    }
+    
+    /**
      * Schedule message
      */
     public function schedule_message($recipients, $message, $send_time, $from = null) {
         $table_scheduled = $this->wpdb->prefix . 'ecs_scheduled_messages';
         
+        // Convert datetime-local format (2025-10-01T15:00) to MySQL format
+        // The input is in LOCAL WordPress timezone
+        $send_time_formatted = str_replace('T', ' ', $send_time) . ':00'; // Convert to Y-m-d H:i:s
+        
+        // Get WordPress timezone
+        $wp_timezone = wp_timezone_string();
+        $timezone = new DateTimeZone($wp_timezone);
+        
+        // Create DateTime object in WordPress timezone
+        $send_datetime = new DateTime($send_time_formatted, $timezone);
+        
+        // Get timestamp for cron scheduling (WordPress uses local timestamp)
+        $send_timestamp = $send_datetime->getTimestamp();
+        
+        error_log("ECS Schedule Debug:");
+        error_log("  Input: $send_time");
+        error_log("  Formatted: $send_time_formatted");
+        error_log("  WP Timezone: $wp_timezone");
+        error_log("  DateTime: " . $send_datetime->format('Y-m-d H:i:s T'));
+        error_log("  Timestamp: $send_timestamp");
+        error_log("  Current timestamp: " . current_time('timestamp'));
+        
+        // Store the send time in database (in WordPress timezone)
         $data = array(
             'recipients' => json_encode($recipients),
             'message' => $message,
             'from_number' => $from ?: $this->phone_number,
-            'send_time' => $send_time,
+            'send_time' => $send_time_formatted,
             'status' => 'pending'
         );
         
         $result = $this->wpdb->insert($table_scheduled, $data);
         
         if ($result === false) {
-            return array('success' => false, 'error' => 'Failed to schedule message');
+            return array('success' => false, 'error' => 'Failed to schedule message: ' . $this->wpdb->last_error);
         }
         
+        $message_id = $this->wpdb->insert_id;
+        
         // Schedule WordPress cron job
-        wp_schedule_single_event(strtotime($send_time), 'ecs_send_scheduled_message', array($this->wpdb->insert_id));
+        $cron_scheduled = wp_schedule_single_event($send_timestamp, 'ecs_send_scheduled_message', array($message_id));
+        
+        if ($cron_scheduled === false) {
+            // Cron scheduling failed, clean up the database entry
+            $this->wpdb->delete($table_scheduled, array('id' => $message_id));
+            return array('success' => false, 'error' => 'Failed to schedule cron job');
+        }
+        
+        error_log("ECS: Message scheduled - ID: $message_id, Time: $send_time_formatted, Timestamp: $send_timestamp");
         
         return array(
             'success' => true,
@@ -401,11 +506,16 @@ class ECS_Service {
     /**
      * Get scheduled messages
      */
-    public function get_scheduled_messages() {
+    public function get_scheduled_messages($limit = 50, $offset = 0, $status = null) {
         $table_scheduled = $this->wpdb->prefix . 'ecs_scheduled_messages';
         
-        $sql = "SELECT * FROM $table_scheduled ORDER BY send_time ASC";
-        $messages = $this->wpdb->get_results($sql, ARRAY_A);
+        $where_clause = '';
+        if ($status) {
+            $where_clause = $this->wpdb->prepare("WHERE status = %s", $status);
+        }
+        
+        $sql = "SELECT * FROM $table_scheduled $where_clause ORDER BY created_at DESC LIMIT %d OFFSET %d";
+        $messages = $this->wpdb->get_results($this->wpdb->prepare($sql, $limit, $offset), ARRAY_A);
         
         return array('success' => true, 'messages' => $messages);
     }
@@ -426,6 +536,31 @@ class ECS_Service {
         wp_clear_scheduled_hook('ecs_send_scheduled_message', array($message_id));
         
         return array('success' => true, 'message' => 'Scheduled message deleted successfully');
+    }
+    
+    /**
+     * Cancel scheduled message (mark as cancelled instead of deleting)
+     */
+    public function cancel_scheduled_message($message_id) {
+        $table_scheduled = $this->wpdb->prefix . 'ecs_scheduled_messages';
+        
+        // Update status to cancelled
+        $result = $this->wpdb->update(
+            $table_scheduled,
+            array('status' => 'cancelled'),
+            array('id' => $message_id),
+            array('%s'),
+            array('%d')
+        );
+        
+        if ($result === false) {
+            return array('success' => false, 'error' => 'Failed to cancel scheduled message');
+        }
+        
+        // Cancel WordPress cron job
+        wp_clear_scheduled_hook('ecs_send_scheduled_message', array($message_id));
+        
+        return array('success' => true, 'message' => 'Scheduled message cancelled successfully');
     }
     
     /**

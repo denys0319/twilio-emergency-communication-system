@@ -17,6 +17,25 @@ class ECS_Database {
     }
     
     /**
+     * Check and add missing columns to existing tables
+     */
+    public function upgrade_tables() {
+        $table_scheduled = $this->wpdb->prefix . 'ecs_scheduled_messages';
+        
+        // Check if sent_at column exists
+        $column_exists = $this->wpdb->get_results(
+            "SHOW COLUMNS FROM `{$table_scheduled}` LIKE 'sent_at'"
+        );
+        
+        // Add sent_at column if it doesn't exist
+        if (empty($column_exists)) {
+            $this->wpdb->query(
+                "ALTER TABLE `{$table_scheduled}` ADD `sent_at` datetime NULL AFTER `status`"
+            );
+        }
+    }
+    
+    /**
      * Create database tables
      */
     public function create_tables() {
@@ -91,6 +110,7 @@ class ECS_Database {
             from_number varchar(20),
             send_time datetime NOT NULL,
             status varchar(50) DEFAULT 'pending',
+            sent_at datetime,
             twilio_service_sid varchar(255),
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
